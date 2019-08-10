@@ -3,7 +3,7 @@ Get the HUYA barrage in Windows 10 system
 
 Usage: hydm -i [roomid]
 
-    Press [Q] to stop download
+    Press [Q] to stop
 
     Version 1.0.0 by NLSoft 2019.08
 
