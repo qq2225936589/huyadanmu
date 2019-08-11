@@ -11,6 +11,7 @@
 #include <conio.h>
 #include <iostream>
 #include <getopt.h>
+#include <zmq.h>
 #include <cjson/cJSON.h>
 #include "easywsclient.hpp"
 #include "md5.h"
@@ -22,6 +23,82 @@
 using  easywsclient::WebSocket;
 static WebSocket::pointer ws = NULL;
 static int isExit = 0;
+static double start,end,cost;
+static unsigned int mm,ss,ms;
+static int isDEBUG = 0;
+static int isSAVE = 0;
+static char outLRC[512];
+void *zmq_ctx= NULL, *g_zmq_socket= NULL;
+static FILE *g_out = NULL;
+
+int initzmq(void)
+{
+    const char *bind_address = "tcp://localhost:5555";
+    zmq_ctx = zmq_ctx_new();
+    if (!zmq_ctx) {
+        printf("Could not create ZMQ context: %s\n", zmq_strerror(errno));
+        return 1;
+    }
+
+    g_zmq_socket = zmq_socket(zmq_ctx, ZMQ_REQ);
+    if (!g_zmq_socket) {
+        printf("Could not create ZMQ socket: %s\n", zmq_strerror(errno));
+        return 1;
+    }
+
+    if (zmq_connect(g_zmq_socket, bind_address) == -1) {
+        printf("Could not bind ZMQ responder to address '%s': %s\n",
+               bind_address, zmq_strerror(errno));
+        return 1;
+    }
+    return 0;
+}
+
+void destroyzmq(void)
+{
+    if(g_zmq_socket) zmq_close(g_zmq_socket);
+    if(zmq_ctx) zmq_ctx_destroy(zmq_ctx);    
+}
+
+int zmqsend(char *data)
+{
+    char src_buf[1024];
+    char *recv_buf;
+    int recv_buf_size;
+    zmq_msg_t msg;
+    
+    sprintf(src_buf, "Parsed_drawtext_2 reinit text='　%s'", data);
+
+    if (zmq_send(g_zmq_socket, src_buf, strlen(src_buf), 0) == -1) {
+        printf("Could not send message: %s\n", zmq_strerror(errno));
+        return 1;
+    }
+
+    if (zmq_msg_init(&msg) == -1) {
+        printf("Could not initialize receiving message: %s\n", zmq_strerror(errno));
+        return 1;
+    }
+
+    if (zmq_msg_recv(&msg, g_zmq_socket, 0) == -1) {
+        printf("Could not receive message: %s\n", zmq_strerror(errno));
+        zmq_msg_close(&msg);
+        return 1;
+    }
+
+    recv_buf_size = zmq_msg_size(&msg) + 1;
+    recv_buf = (char*)malloc(recv_buf_size);
+    if (!recv_buf) {
+        printf("Could not allocate receiving message buffer\n");
+        zmq_msg_close(&msg);
+        return 1;
+    }
+    memcpy(recv_buf, zmq_msg_data(&msg), recv_buf_size - 1);
+    recv_buf[recv_buf_size-1] = 0;
+    //printf("%s\n", recv_buf);
+    zmq_msg_close(&msg);
+    free(recv_buf);
+    return 0;
+}
 
 std::string string_To_UTF8(const std::string& str) 
 {
@@ -79,10 +156,13 @@ void handle_message(const std::string & message)
     //*
     cJSON* root = cJSON_Parse(message.c_str());
     
-    /*
-    char* pstr = cJSON_Print(root);
-    std::cout << pstr << std::endl;
-    free(pstr);
+    //*
+    if(isDEBUG)
+    {
+        char* pstr = cJSON_Print(root);
+        std::cout << pstr << std::endl;
+        free(pstr);
+    }
     //*/
     
     cJSON* itemName = cJSON_GetObjectItem(root, "data");
@@ -91,6 +171,31 @@ void handle_message(const std::string & message)
         printf("[%s] %s\n",
             cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
             cJSON_GetObjectItem(itemName, "content")->valuestring);
+        if(isSAVE)
+        {
+            end=clock();
+            cost=(end-start)/CLOCKS_PER_SEC;
+            mm = (unsigned int)cost / 60;
+            ss = (unsigned int)cost % 60;
+            ms = (unsigned int)(cost * 100) % 100;
+            //FILE *out = fopen(outLRC,"ab+");
+            if(g_out)
+            {
+                fprintf(g_out,"[%02d:%02d.%02d]　[%s] %s\n",
+                    mm,ss,ms,
+                    cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
+                    cJSON_GetObjectItem(itemName, "content")->valuestring);
+                //fclose(g_out);
+            }
+        }
+        else
+        {
+            char zmqMSG[512];
+            sprintf(zmqMSG, "[%s] %s\n",
+            cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
+            cJSON_GetObjectItem(itemName, "content")->valuestring);
+            zmqsend(zmqMSG);
+        }
     }
     if(root) cJSON_Delete(root);
 }
@@ -109,9 +214,11 @@ static void * sendping(void *arg)
 
 void help()
 {
-    std::cout << "Usage: hydm -i [roomid]" << std::endl;
+    std::cout << "Usage: hydm [options] -i [roomid]" << std::endl;
+    std::cout << "    -o set output LRC file name" << std::endl;
+    std::cout << "    -d debug mode" << std::endl;
     std::cout << "    Press [Q] to stop download" << std::endl;
-    std::cout << "    Version 1.0.0 by NLSoft 2019.08" << std::endl;
+    std::cout << "    Version 1.0.2 by NLSoft 2019.08" << std::endl;
 }
 
 int main(int argc, char** argv) 
@@ -127,17 +234,33 @@ int main(int argc, char** argv)
         exit(0);
     }
 
-    while ((option_index = getopt(argc, argv, "i:")) != -1) {
+    memset(outLRC, 0, 512);
+    while ((option_index = getopt(argc, argv, "o:i:d")) != -1) {
         switch (option_index) {
         case 'i':
             strcpy(roomid, optarg);
             break;
+        case 'o':
+            strcpy(outLRC, optarg);
+            g_out = fopen(outLRC,"wb");
+            if(g_out)
+            {
+                //fclose(g_out);
+                isSAVE = 1;
+            }
+            break;
+        case 'd':
+            isDEBUG = 1;
+            break;
         }
     }
 
+    start=clock();
     time_t times = time(NULL);
 	sprintf(data, "data={\"roomId\":%s}&key=7ba102eb&timestamp=%ld", roomid, times);
     
+    if(!isSAVE) initzmq();
+
     std::string sdata = data;
     std::string utf_8data = string_To_UTF8(sdata);    
 	get_str_md5(utf_8data.c_str(), sign);
@@ -175,13 +298,17 @@ int main(int argc, char** argv)
 			exitflag = _getch();
 			if (exitflag == 'q' || exitflag == 'Q') {
                 isExit = 1;
+                if(g_out) fclose(g_out);
                 pthread_join(thread, &ret);
 				break;
 			}
 		}
+        //printf("while---------------\n");
+        usleep(50 * 1000);
 	}
 	delete ws;
-	
+	destroyzmq();
+
     # ifdef _WIN32
 	WSACleanup();
 	# endif

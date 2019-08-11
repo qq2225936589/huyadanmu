@@ -8,7 +8,7 @@ echo cc huyadanmu.cpp
 g++ -w -O2 -c huyadanmu.cpp -o huyadanmu.o -std=c++11 -Wall -static -I/usr/local/include 
 
 echo link hydm.exe
-g++  md5.o huyadanmu.o easywsclient.o -o hydm.exe `pkg-config --cflags --libs --static libcjson ` -lws2_32 -static
+g++  md5.o huyadanmu.o easywsclient.o -o hydm.exe `pkg-config --cflags --libs --static libcjson libzmq` -lws2_32 -static
 
 echo strip hydm.exe
 strip hydm.exe
