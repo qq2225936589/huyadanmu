@@ -27,6 +27,7 @@ static double start,end,cost;
 static unsigned int mm,ss,ms;
 static int isDEBUG = 0;
 static int isSAVE = 0;
+static int isZMQ = 0;
 static char outLRC[512];
 void *zmq_ctx= NULL, *g_zmq_socket= NULL;
 static FILE *g_out = NULL;
@@ -190,11 +191,14 @@ void handle_message(const std::string & message)
         }
         else
         {
-            char zmqMSG[512];
-            sprintf(zmqMSG, "[%s] %s\n",
-            cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
-            cJSON_GetObjectItem(itemName, "content")->valuestring);
-            zmqsend(zmqMSG);
+            if(isZMQ && zmq_ctx && g_zmq_socket)
+            {
+                char zmqMSG[512];
+                sprintf(zmqMSG, "[%s] %s\n",
+                cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
+                cJSON_GetObjectItem(itemName, "content")->valuestring);
+                zmqsend(zmqMSG);
+            }
         }
     }
     if(root) cJSON_Delete(root);
@@ -216,9 +220,10 @@ void help()
 {
     std::cout << "Usage: hydm [options] -i [roomid]" << std::endl;
     std::cout << "    -o set output LRC file name" << std::endl;
+    std::cout << "    -z set enable zmqsend" << std::endl;
     std::cout << "    -d debug mode" << std::endl;
-    std::cout << "    Press [Q] to stop download" << std::endl;
-    std::cout << "    Version 1.0.2 by NLSoft 2019.08" << std::endl;
+    std::cout << "    Press [Q] to stop" << std::endl;
+    std::cout << "    Version 1.0.3 by NLSoft 2019.08" << std::endl;
 }
 
 int main(int argc, char** argv) 
@@ -235,7 +240,7 @@ int main(int argc, char** argv)
     }
 
     memset(outLRC, 0, 512);
-    while ((option_index = getopt(argc, argv, "o:i:d")) != -1) {
+    while ((option_index = getopt(argc, argv, "o:i:dz")) != -1) {
         switch (option_index) {
         case 'i':
             strcpy(roomid, optarg);
@@ -251,6 +256,9 @@ int main(int argc, char** argv)
             break;
         case 'd':
             isDEBUG = 1;
+            break;
+        case 'z':
+            isZMQ = 1;
             break;
         }
     }
