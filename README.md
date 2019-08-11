@@ -13,4 +13,4 @@ Usage: hydm [options] -i [roomid]
 
 Open the console window and executing chcp 65001.
 
-Dependent cjson library.
+Dependent cjson and zmq library.
