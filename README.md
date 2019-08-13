@@ -11,7 +11,7 @@ Usage: hydm [options] -i [roomid]
     
     Press [Q] to stop
     
-    Version 1.0.3 by NLSoft 2019.08
+    Version 1.0.5 by NLSoft 2019.08
 
 Open the console window and executing chcp 65001.
 
