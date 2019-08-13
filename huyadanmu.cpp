@@ -15,6 +15,7 @@
 #include <cjson/cJSON.h>
 #include "easywsclient.hpp"
 #include "md5.h"
+#include <map>
 
 #define READ_DATA_SIZE	1024
 #define MD5_SIZE		16
@@ -31,6 +32,52 @@ static int isZMQ = 0;
 static char outLRC[512];
 void *zmq_ctx= NULL, *g_zmq_socket= NULL;
 static FILE *g_out = NULL;
+
+typedef struct t_emots {
+    char idx[10];
+    char str[10];
+}_emots;
+_emots emots[] ={
+    {"/{dx", "/大笑"},
+    {"/{sh", "/送花"},
+    {"/{tx", "/偷笑"},
+    {"/{dk", "/大哭"},
+    {"/{hh", "/嘿哈"},
+    {"/{66", "/666"},
+    {"/{gd", "/感动"},
+    {"/{yw", "/疑问"},
+    {"/{xh", "/喜欢"},
+    {"/{jx", "/奸笑"},
+    {"/{zan","/赞"},
+    {"/{ka", "/可爱"},
+    {"/{am", "/傲慢"},
+    {"/{kx", "/开心"},
+    {"/{88", "/拜拜"},
+    {"/{hx" , "/害羞"},
+    {"/{zs" , "/衰"},
+    {"/{pu" , "/吐血"},
+    {"/{zc" , "/嘴馋"},
+    {"/{sq" , "/生气"},
+    {"/{fe" , "/扶额"},
+    {"/{bz" , "/闭嘴"},
+    {"/{kw" , "/枯萎"},
+    {"/{xu" , "/嘘"},
+    {"/{xk" , "/笑哭"},
+    {"/{lh" , "/流汗"},
+    {"/{bk" , "/不看"},
+    {"/{hq" , "/哈欠"},
+    {"/{tp" , "/调皮"},
+    {"/{gl" , "/鬼脸"},
+    {"/{cl" , "/戳脸"},
+    {"/{dg" , "/大哥"},
+    {"/{kun", "/困"},
+    {"/{yb" , "/拥抱"},
+    {"/{zt" , "/猪头"},
+    {"/{kl" , "/骷髅"},
+    {"/{cc" , "/臭臭"},
+    {"/{xd" , "/心动"},
+    {"/{dao", "/刀"}
+};
 
 int initzmq(void)
 {
@@ -134,6 +181,44 @@ void get_str_md5(const char *str, char *md5_str)
 	md5_str[MD5_STR_LEN] = '\0';
 }
 
+// 0-黑 1-蓝 2-绿 3-浅绿 4-红 5-紫 6-黄 7-白 8-灰 9-淡蓝 
+//10-淡绿 11-淡浅绿  12-淡红 13-淡紫 14-淡黄 15-亮白 
+void SetColor2(int ForeColor,int BackColor)
+{
+     WORD wColor;
+     HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+     CONSOLE_SCREEN_BUFFER_INFO csbi;
+     if(GetConsoleScreenBufferInfo(hStdOut, &csbi))
+     {
+          //wColor = (csbi.wAttributes & 0xF0) + (ForgC & 0x0F);
+          wColor = ForeColor + BackColor * 0x10;
+          SetConsoleTextAttribute(hStdOut, wColor);
+     }
+}
+
+void replace_str(char *str,char *oldstr,char *newstr, char *outstr){
+    char bstr[1024];
+    memset(bstr,0,1024);
+    for(int i = 0;i < strlen(str);i++){
+        if(!strncmp(str+i,oldstr,strlen(oldstr))){
+            strcat(bstr,newstr);
+            i += strlen(oldstr) - 1;
+        }else{
+        	strncat(bstr,str + i,1);
+	    }
+    }
+    strcpy(outstr,bstr);
+}
+
+void emotsStr(char *inStr, char *outStr)
+{
+    strcpy(outStr, inStr);
+    for(int i=0;i<sizeof(emots)/sizeof(_emots);i++)
+    {
+        replace_str(outStr, emots[i].idx, emots[i].str,outStr);
+    }
+}
+
 void handle_message(const std::string & message)
 {
     /*
@@ -169,9 +254,21 @@ void handle_message(const std::string & message)
     cJSON* itemName = cJSON_GetObjectItem(root, "data");
     if(itemName)
     {
-        printf("[%s] %s\n",
-            cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
-            cJSON_GetObjectItem(itemName, "content")->valuestring);
+        //printf("[%s] %s\n",
+        //    cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
+        //    cJSON_GetObjectItem(itemName, "content")->valuestring);
+        char newStr[1024];
+        //strcpy(newStr, cJSON_GetObjectItem(itemName, "content")->valuestring);
+        emotsStr(cJSON_GetObjectItem(itemName, "content")->valuestring, newStr);
+
+        SetColor2(3,0);
+        printf("[");
+        SetColor2(0,3);
+        printf("%s",cJSON_GetObjectItem(itemName, "sendNick")->valuestring);
+        SetColor2(3,0);
+        printf("] ");
+        printf("%s\n",newStr); 
+        
         if(isSAVE)
         {
             end=clock();
@@ -185,7 +282,7 @@ void handle_message(const std::string & message)
                 fprintf(g_out,"[%02d:%02d.%02d]　[%s] %s\n",
                     mm,ss,ms,
                     cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
-                    cJSON_GetObjectItem(itemName, "content")->valuestring);
+                    newStr);
                 //fclose(g_out);
             }
         }
@@ -194,9 +291,9 @@ void handle_message(const std::string & message)
             if(isZMQ && zmq_ctx && g_zmq_socket)
             {
                 char zmqMSG[512];
-                sprintf(zmqMSG, "[%s] %s\n",
-                cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
-                cJSON_GetObjectItem(itemName, "content")->valuestring);
+                sprintf(zmqMSG, "%s",
+                    //cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
+                    newStr);
                 zmqsend(zmqMSG);
             }
         }
@@ -223,7 +320,7 @@ void help()
     std::cout << "    -z set enable zmqsend" << std::endl;
     std::cout << "    -d debug mode" << std::endl;
     std::cout << "    Press [Q] to stop" << std::endl;
-    std::cout << "    Version 1.0.3 by NLSoft 2019.08" << std::endl;
+    std::cout << "    Version 1.0.5 by NLSoft 2019.08" << std::endl;
 }
 
 int main(int argc, char** argv) 
@@ -233,6 +330,7 @@ int main(int argc, char** argv)
 	char roomid[50];
 	char ws_url[512];
 	int option_index = 0;
+
     if(argc == 1)
     {
         help();
