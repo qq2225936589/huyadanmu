@@ -32,6 +32,7 @@ static int isZMQ = 0;
 static char outLRC[512];
 void *zmq_ctx= NULL, *g_zmq_socket= NULL;
 static FILE *g_out = NULL;
+static char zmqport[10];
 
 typedef struct t_emots {
     char idx[10];
@@ -81,7 +82,8 @@ _emots emots[] ={
 
 int initzmq(void)
 {
-    const char *bind_address = "tcp://localhost:5555";
+    char bind_address[50];
+    sprintf(bind_address, "tcp://localhost:%s", zmqport);
     zmq_ctx = zmq_ctx_new();
     if (!zmq_ctx) {
         printf("Could not create ZMQ context: %s\n", zmq_strerror(errno));
@@ -273,9 +275,9 @@ void handle_message(const std::string & message)
         {
             end=clock();
             cost=(end-start)/CLOCKS_PER_SEC;
-            mm = (unsigned int)cost / 60;
-            ss = (unsigned int)cost % 60;
-            ms = (unsigned int)(cost * 100) % 100;
+            mm = (unsigned long int)cost / 60;
+            ss = (unsigned long int)cost % 60;
+            ms = (unsigned long int)(cost * 100) % 100;
             //FILE *out = fopen(outLRC,"ab+");
             if(g_out)
             {
@@ -316,11 +318,11 @@ static void * sendping(void *arg)
 void help()
 {
     std::cout << "Usage: hydm [options] -i [roomid]" << std::endl;
-    std::cout << "    -o set output LRC file name" << std::endl;
-    std::cout << "    -z set enable zmqsend" << std::endl;
+    std::cout << "    -o [filename] set output LRC filename" << std::endl;
+    std::cout << "    -z [port] set zmq port" << std::endl;
     std::cout << "    -d debug mode" << std::endl;
     std::cout << "    Press [Q] to stop" << std::endl;
-    std::cout << "    Version 1.0.5 by NLSoft 2019.08" << std::endl;
+    std::cout << "    Version 1.0.6 by NLSoft 2019.08" << std::endl;
 }
 
 int main(int argc, char** argv) 
@@ -338,7 +340,8 @@ int main(int argc, char** argv)
     }
 
     memset(outLRC, 0, 512);
-    while ((option_index = getopt(argc, argv, "o:i:dz")) != -1) {
+    memset(zmqport, 0, 10);
+    while ((option_index = getopt(argc, argv, "o:i:z:d")) != -1) {
         switch (option_index) {
         case 'i':
             strcpy(roomid, optarg);
@@ -348,6 +351,7 @@ int main(int argc, char** argv)
             g_out = fopen(outLRC,"wb");
             if(g_out)
             {
+                fprintf(g_out,"[00:00.00]　\n");
                 //fclose(g_out);
                 isSAVE = 1;
             }
@@ -356,6 +360,7 @@ int main(int argc, char** argv)
             isDEBUG = 1;
             break;
         case 'z':
+            strcpy(zmqport, optarg);
             isZMQ = 1;
             break;
         }
@@ -365,7 +370,7 @@ int main(int argc, char** argv)
     time_t times = time(NULL);
 	sprintf(data, "data={\"roomId\":%s}&key=7ba102eb&timestamp=%ld", roomid, times);
     
-    if(!isSAVE) initzmq();
+    if(isZMQ) initzmq();
 
     std::string sdata = data;
     std::string utf_8data = string_To_UTF8(sdata);    
@@ -413,7 +418,7 @@ int main(int argc, char** argv)
         usleep(50 * 1000);
 	}
 	delete ws;
-	destroyzmq();
+	if(isZMQ) destroyzmq();
 
     # ifdef _WIN32
 	WSACleanup();
