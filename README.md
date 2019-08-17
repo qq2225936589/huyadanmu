@@ -16,3 +16,5 @@ Usage: hydm [options] -i [roomid]
 Open the console window and executing chcp 65001.
 
 Dependent cjson and zmq library.
+
+Donation Alipay HY007
