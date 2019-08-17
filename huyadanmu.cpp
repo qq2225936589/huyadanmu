@@ -221,6 +221,8 @@ void emotsStr(char *inStr, char *outStr)
     }
 }
 
+clock_t lastmsgtime = 0;
+
 void handle_message(const std::string & message)
 {
     /*
@@ -296,9 +298,12 @@ void handle_message(const std::string & message)
                 sprintf(zmqMSG, "%s",
                     //cJSON_GetObjectItem(itemName, "sendNick")->valuestring,
                     newStr);
+                replace_str(zmqMSG,"%"," ",zmqMSG);
+                replace_str(zmqMSG,":"," ",zmqMSG);
                 zmqsend(zmqMSG);
             }
         }
+        lastmsgtime = clock();
     }
     if(root) cJSON_Delete(root);
 }
@@ -322,7 +327,7 @@ void help()
     std::cout << "    -z [port] set zmq port" << std::endl;
     std::cout << "    -d debug mode" << std::endl;
     std::cout << "    Press [Q] to stop" << std::endl;
-    std::cout << "    Version 1.0.6 by NLSoft 2019.08" << std::endl;
+    std::cout << "    Version 1.0.7 by NLSoft 2019.08" << std::endl;
 }
 
 int main(int argc, char** argv) 
@@ -413,9 +418,16 @@ int main(int argc, char** argv)
                 pthread_join(thread, &ret);
 				break;
 			}
+            if (isZMQ==1 && exitflag == ' ') {
+                zmqsend(" ");
+            }
 		}
         //printf("while---------------\n");
         usleep(50 * 1000);
+        if( isZMQ==1  && ((clock() - lastmsgtime)/CLOCKS_PER_SEC)>12 )
+        {
+            zmqsend(" ");
+        }
 	}
 	delete ws;
 	if(isZMQ) destroyzmq();
